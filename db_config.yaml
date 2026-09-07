@@ -1,0 +1,121 @@
+database:
+  name: "imdb_data.duckdb"
+  type: "DuckDB"
+
+tables:
+  title_basics:
+    description: "Contains all title records including movies, TV series, and shorts."
+    columns:
+      tconst:
+        type: "VARCHAR"
+        description: "Primary key for title"
+        primary_key: true
+      titleType:
+        type: "VARCHAR"
+        description: "Format type (movie, tvSeries, short, etc.)"
+      primaryTitle:
+        type: "VARCHAR"
+        description: "Main promotional title"
+      originalTitle:
+        type: "VARCHAR"
+        description: "Original title in native language"
+      isAdult:
+        type: "BOOLEAN"
+        description: "0 for non-adult, 1 for adult content"
+      startYear:
+        type: "INTEGER"
+        description: "Release year"
+      endYear:
+        type: "INTEGER"
+        description: "End year for TV series"
+      runtimeMinutes:
+        type: "INTEGER"
+        description: "Runtime duration in minutes"
+      genres:
+        type: "VARCHAR"
+        description: "Comma-separated list of genres"
+
+  title_ratings:
+    description: "User rating and vote metrics."
+    columns:
+      tconst:
+        type: "VARCHAR"
+        description: "Foreign key linking to title_basics.tconst"
+      averageRating:
+        type: "FLOAT"
+        description: "Weighted average star rating (0.0 to 10.0)"
+      numVotes:
+        type: "BIGINT"
+        description: "Total votes recorded"
+
+  name_basics:
+    description: "Directory of actors, directors, writers, and crew members."
+    columns:
+      nconst:
+        type: "VARCHAR"
+        description: "Primary key for person ID (starts with 'nm')"
+        primary_key: true
+      primaryName:
+        type: "VARCHAR"
+        description: "Full name of the person (e.g., 'Christopher Nolan')"
+      birthYear:
+        type: "INTEGER"
+        description: "Birth year"
+      deathYear:
+        type: "INTEGER"
+        description: "Death year"
+      primaryProfession:
+        type: "VARCHAR"
+        description: "Comma-separated top professions (actor, director, writer)"
+      knownForTitles:
+        type: "VARCHAR"
+        description: "Comma-separated list of tconst IDs famous for"
+
+  title_principals:
+    description: "Junction table mapping individuals to specific movie roles."
+    columns:
+      tconst:
+        type: "VARCHAR"
+        description: "Foreign key linking to title_basics.tconst"
+      ordering:
+        type: "INTEGER"
+        description: "Credit order position"
+      nconst:
+        type: "VARCHAR"
+        description: "Foreign key linking to name_basics.nconst"
+      category:
+        type: "VARCHAR"
+        description: "Role category (actor, actress, director, writer)"
+      job:
+        type: "VARCHAR"
+        description: "Specific job title"
+      characters:
+        type: "VARCHAR"
+        description: "Character name array string"
+
+relationships:
+  - "title_basics.tconst <-> title_ratings.tconst (1-to-1)"
+  - "title_basics.tconst <-> title_principals.tconst (1-to-Many)"
+  - "name_basics.nconst <-> title_principals.nconst (1-to-Many)"
+
+join_rules:
+  actor_search: >
+    To find movies by an actor or director, join title_principals:
+    JOIN title_principals tp ON title_basics.tconst = tp.tconst
+    JOIN name_basics nb ON tp.nconst = nb.nconst
+  known_for_unpacking: >
+    To expand knownForTitles CSV string in name_basics:
+    CROSS JOIN UNNEST(string_split(name_basics.knownForTitles, ',')) AS t(tconst)
+    JOIN title_basics tb ON t.tconst = tb.tconst
+
+sql_generation_rules:
+  - "ONLY produce valid DuckDB SQL queries."
+  - "Use ILIKE for genre searches (e.g., genres ILIKE '%sci-fi%')."
+  - "ALWAYS use ILIKE or lower() for string filtering (e.g., lower(genres) LIKE '%action%')."
+  - "ALWAYS add 'LIMIT 20' unless an explicit count or limit is requested."
+  - "Do NOT wrap response in markdown code fences like ```sql."
+  - "DO NOT query 'movies' or 'imdb_movies' table. Use 'title_basics'."
+  - "Use COALESCE to handle NULL values where necessary."
+  - "Do NOT filter by numVotes >= 10000 unless the user explicitly requests popular/most-voted titles."
+  - "sort by numVotes"
+  - "Use LEFT JOIN on title_ratings or COALESCE to ensure titles without ratings are not excluded."
